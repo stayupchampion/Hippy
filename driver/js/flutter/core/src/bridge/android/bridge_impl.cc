@@ -45,8 +45,6 @@ using V8BridgeUtils = hippy::runtime::V8BridgeUtils;
 using StringViewUtils = hippy::base::StringViewUtils;
 
 constexpr char kHippyCurDirKey[] = "__HIPPYCURDIR__";
-constexpr uint32_t kDefaultNumberOfThreads = 2;
-constexpr char kDomRunnerName[] = "hippy_dom";
 
 
 int64_t BridgeImpl::InitJsEngine(const std::shared_ptr<JSBridgeRuntime> &platform_runtime,
@@ -54,7 +52,7 @@ int64_t BridgeImpl::InitJsEngine(const std::shared_ptr<JSBridgeRuntime> &platfor
                                  bool bridge_param_json,
                                  bool is_dev_module,
                                  int64_t group_id,
-                                 uint32_t work_manager_id,
+                                 const std::shared_ptr<WorkerManager> &worker_manager,
                                  uint32_t dom_manager_id,
                                  const char16_t *char_globalConfig,
                                  size_t initial_heap_size,
@@ -93,9 +91,6 @@ int64_t BridgeImpl::InitJsEngine(const std::shared_ptr<JSBridgeRuntime> &platfor
   unicode_string_view global_config = unicode_string_view(char_globalConfig);
   unicode_string_view data_dir = unicode_string_view(char_data_dir);
   unicode_string_view ws_url = unicode_string_view(char_ws_url);
-  std::shared_ptr<WorkerManager> worker_manager;
-  auto flag = worker_manager_map_.Find(work_manager_id, worker_manager);
-  FOOTSTONE_DCHECK(flag);
   auto dom_manager = DomManager::Find(dom_manager_id);
   FOOTSTONE_DCHECK(dom_manager);
   auto dom_task_runner = dom_manager->GetTaskRunner();
@@ -304,38 +299,4 @@ std::shared_ptr<Scope> BridgeImpl::GetScope(int64_t runtime_id) {
     return nullptr;
   }
   return runtime->GetScope();
-}
-
-uint32_t BridgeImpl::CreateWorkerManager() {
-  auto worker_manager = std::make_shared<WorkerManager>(kDefaultNumberOfThreads);
-  auto id = global_worker_manager_key_.fetch_add(1);
-  worker_manager_map_.Insert(id, worker_manager);
-  return id;
-}
-
-void BridgeImpl::DestroyWorkerManager(uint32_t worker_manager_id) {
-  std::shared_ptr<WorkerManager> worker_manager;
-  auto flag = worker_manager_map_.Find(worker_manager_id, worker_manager);
-  if (flag && worker_manager) {
-    worker_manager->Terminate();
-    worker_manager_map_.Erase(worker_manager_id);
-  }
-}
-
-uint32_t BridgeImpl::CreateDomInstance(uint32_t worker_manager_id) {
-  auto dom_manager = std::make_shared<DomManager>();
-  DomManager::Insert(dom_manager);
-  std::shared_ptr<WorkerManager> worker_manager;
-  auto flag = worker_manager_map_.Find(worker_manager_id, worker_manager);
-  FOOTSTONE_DCHECK(flag);
-  auto runner = worker_manager->CreateTaskRunner(kDomRunnerName);
-  dom_manager->SetTaskRunner(runner);
-  return dom_manager->GetId();
-}
-
-void BridgeImpl::DestroyDomInstance(uint32_t dom_id) {
-  auto dom_manager = DomManager::Find(dom_id);
-  if (dom_manager) {
-    DomManager::Erase(dom_id);
-  }
 }
